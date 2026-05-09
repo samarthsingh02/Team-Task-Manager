@@ -6,43 +6,69 @@ import { AuthContext } from '../context/AuthContext';
 const ProjectDetails = () => {
   const { id } = useParams();
   const [tasks, setTasks] = useState([]);
-  const [showModal, setShowModal] = useState(false);
+  const [project, setProject] = useState(null);
+  const [allUsers, setAllUsers] = useState([]);
+  
+  const [showTaskModal, setShowTaskModal] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [assignedTo, setAssignedTo] = useState('');
+  
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [memberIdToAdd, setMemberIdToAdd] = useState('');
+
   const { user } = useContext(AuthContext);
 
-  const fetchTasks = async () => {
+  const fetchData = async () => {
     try {
-      const { data } = await api.get(`/tasks/project/${id}`);
-      setTasks(data);
+      const [tasksRes, projectsRes, usersRes] = await Promise.all([
+        api.get(`/tasks/project/${id}`),
+        api.get('/projects'),
+        api.get('/auth/users')
+      ]);
+      setTasks(tasksRes.data);
+      setProject(projectsRes.data.find(p => p._id === id));
+      setAllUsers(usersRes.data);
     } catch (error) {
       console.error(error);
     }
   };
 
   useEffect(() => {
-    fetchTasks();
+    fetchData();
   }, [id]);
 
   const handleCreateTask = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/tasks/create', { title, description, project: id });
-      setShowModal(false);
+      await api.post('/tasks/create', { title, description, project: id, assignedTo });
+      setShowTaskModal(false);
       setTitle('');
       setDescription('');
-      fetchTasks();
+      setAssignedTo('');
+      fetchData();
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleAddMember = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post(`/projects/${id}/add-member`, { userId: memberIdToAdd });
+      setShowMemberModal(false);
+      setMemberIdToAdd('');
+      fetchData();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to add member');
     }
   };
 
   const handleStatusChange = async (taskId, newStatus) => {
     try {
       await api.patch(`/tasks/update/${taskId}`, { status: newStatus });
-      fetchTasks(); // Refresh list to ensure state sync
+      fetchData(); 
     } catch (error) {
-      console.error(error);
       alert(error.response?.data?.message || 'Failed to update task status or unauthorized');
     }
   };
@@ -59,11 +85,19 @@ const ProjectDetails = () => {
   return (
     <div className="container mx-auto p-8">
       <div className="flex justify-between items-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-800">Project Tasks</h2>
+        <div>
+          <h2 className="text-3xl font-bold text-gray-800">{project ? project.title : 'Project Tasks'}</h2>
+          <p className="text-gray-500 mt-1">Team Members: {project ? project.members.map(m => m.name).join(', ') : 'Loading...'}</p>
+        </div>
         {user?.role === 'Admin' && (
-          <button onClick={() => setShowModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition shadow">
-            + New Task
-          </button>
+          <div className="space-x-3 flex">
+            <button onClick={() => setShowMemberModal(true)} className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900 transition shadow">
+              + Add Member
+            </button>
+            <button onClick={() => setShowTaskModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition shadow">
+              + New Task
+            </button>
+          </div>
         )}
       </div>
 
@@ -109,7 +143,7 @@ const ProjectDetails = () => {
         </table>
       </div>
 
-      {showModal && (
+      {showTaskModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-lg w-full max-w-md shadow-2xl">
             <h3 className="text-2xl font-bold mb-4 text-gray-800">Create Task</h3>
@@ -122,16 +156,56 @@ const ProjectDetails = () => {
                   value={title} onChange={e => setTitle(e.target.value)} 
                 />
               </div>
-              <div className="mb-6">
+              <div className="mb-4">
                 <label className="block text-gray-700 font-medium mb-1">Description</label>
                 <textarea 
                   className="w-full border px-3 py-2 rounded focus:outline-none focus:ring focus:border-blue-300 min-h-[100px]" 
                   value={description} onChange={e => setDescription(e.target.value)} 
                 />
               </div>
+              <div className="mb-6">
+                <label className="block text-gray-700 font-medium mb-1">Assign To</label>
+                <select 
+                  className="w-full border px-3 py-2 rounded focus:outline-none focus:ring focus:border-blue-300 bg-white"
+                  value={assignedTo} onChange={e => setAssignedTo(e.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {project?.members.map(member => (
+                    <option key={member._id} value={member._id}>{member.name} ({member.email})</option>
+                  ))}
+                </select>
+              </div>
               <div className="flex justify-end space-x-3">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded transition">Cancel</button>
+                <button type="button" onClick={() => setShowTaskModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded transition">Cancel</button>
                 <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">Add Task</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showMemberModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-lg w-full max-w-md shadow-2xl">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800">Add Team Member</h3>
+            <form onSubmit={handleAddMember}>
+              <div className="mb-6">
+                <label className="block text-gray-700 font-medium mb-1">Select User</label>
+                <select 
+                  required
+                  className="w-full border px-3 py-2 rounded focus:outline-none focus:ring focus:border-blue-300 bg-white"
+                  value={memberIdToAdd} onChange={e => setMemberIdToAdd(e.target.value)}
+                >
+                  <option value="" disabled>Select a user to add...</option>
+                  {allUsers.filter(u => !project?.members.find(m => m._id === u._id)).map(u => (
+                    <option key={u._id} value={u._id}>{u.name} ({u.email})</option>
+                  ))}
+                </select>
+                <p className="text-sm text-gray-500 mt-2">Only users not currently in the project are shown.</p>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button type="button" onClick={() => setShowMemberModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded transition">Cancel</button>
+                <button type="submit" className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900 transition">Add Member</button>
               </div>
             </form>
           </div>
