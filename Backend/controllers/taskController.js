@@ -80,4 +80,43 @@ const updateTaskStatus = async (req, res) => {
   }
 };
 
-module.exports = { createTask, getTasksByProject, updateTaskStatus };
+const editTask = async (req, res) => {
+  try {
+    const { title, description, assignedTo, status } = req.body;
+    const task = await Task.findById(req.params.id);
+    
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Only admins can edit task details' });
+    }
+
+    if (title) task.title = title;
+    if (description !== undefined) task.description = description;
+    if (assignedTo !== undefined) task.assignedTo = assignedTo || null;
+    if (status) task.status = status;
+
+    await task.save();
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const deleteTask = async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Only admins can delete tasks' });
+    }
+
+    await task.deleteOne();
+    res.json({ message: 'Task removed' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { createTask, getTasksByProject, updateTaskStatus, editTask, deleteTask };

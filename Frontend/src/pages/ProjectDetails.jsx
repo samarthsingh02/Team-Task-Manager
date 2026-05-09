@@ -10,6 +10,9 @@ const ProjectDetails = () => {
   const [allUsers, setAllUsers] = useState([]);
   
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [isEditingTask, setIsEditingTask] = useState(false);
+  const [editTaskId, setEditTaskId] = useState(null);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
@@ -38,17 +41,45 @@ const ProjectDetails = () => {
     fetchData();
   }, [id]);
 
-  const handleCreateTask = async (e) => {
+  const openCreateTaskModal = () => {
+    setIsEditingTask(false);
+    setTitle('');
+    setDescription('');
+    setAssignedTo('');
+    setShowTaskModal(true);
+  };
+
+  const openEditTaskModal = (task) => {
+    setIsEditingTask(true);
+    setEditTaskId(task._id);
+    setTitle(task.title);
+    setDescription(task.description || '');
+    setAssignedTo(task.assignedTo ? task.assignedTo._id : '');
+    setShowTaskModal(true);
+  };
+
+  const handleTaskSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/tasks/create', { title, description, project: id, assignedTo });
+      if (isEditingTask) {
+        await api.put(`/tasks/${editTaskId}`, { title, description, assignedTo });
+      } else {
+        await api.post('/tasks/create', { title, description, project: id, assignedTo });
+      }
       setShowTaskModal(false);
-      setTitle('');
-      setDescription('');
-      setAssignedTo('');
       fetchData();
     } catch (error) {
-      console.error(error);
+      alert(error.response?.data?.message || 'Failed to save task');
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    if (!window.confirm('Are you sure you want to delete this task?')) return;
+    try {
+      await api.delete(`/tasks/${taskId}`);
+      fetchData();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to delete task');
     }
   };
 
@@ -94,7 +125,7 @@ const ProjectDetails = () => {
             <button onClick={() => setShowMemberModal(true)} className="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900 transition shadow">
               + Add Member
             </button>
-            <button onClick={() => setShowTaskModal(true)} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition shadow">
+            <button onClick={openCreateTaskModal} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition shadow">
               + New Task
             </button>
           </div>
@@ -109,11 +140,12 @@ const ProjectDetails = () => {
               <th className="p-4 font-semibold text-gray-600">Description</th>
               <th className="p-4 font-semibold text-gray-600">Status</th>
               <th className="p-4 font-semibold text-gray-600">Assigned To</th>
+              {user?.role === 'Admin' && <th className="p-4 font-semibold text-gray-600 text-right">Actions</th>}
             </tr>
           </thead>
           <tbody>
             {tasks.map(task => (
-              <tr key={task._id} className="border-b border-gray-100 hover:bg-gray-50 transition">
+              <tr key={task._id} className="border-b border-gray-100 hover:bg-gray-50 transition group">
                 <td className="p-4 font-medium text-gray-800">{task.title}</td>
                 <td className="p-4 text-gray-600 text-sm">{task.description || '-'}</td>
                 <td className="p-4">
@@ -134,10 +166,18 @@ const ProjectDetails = () => {
                     <span className="text-gray-400 italic">Unassigned</span>
                   )}
                 </td>
+                {user?.role === 'Admin' && (
+                  <td className="p-4 text-right">
+                    <div className="opacity-0 group-hover:opacity-100 transition space-x-2">
+                      <button onClick={() => openEditTaskModal(task)} className="text-gray-400 hover:text-blue-600">✎ Edit</button>
+                      <button onClick={() => handleDeleteTask(task._id)} className="text-gray-400 hover:text-red-600">🗑 Delete</button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
             {tasks.length === 0 && (
-              <tr><td colSpan="4" className="p-8 text-center text-gray-500">No tasks have been created in this project yet.</td></tr>
+              <tr><td colSpan={user?.role === 'Admin' ? 5 : 4} className="p-8 text-center text-gray-500">No tasks have been created in this project yet.</td></tr>
             )}
           </tbody>
         </table>
@@ -146,8 +186,8 @@ const ProjectDetails = () => {
       {showTaskModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-lg w-full max-w-md shadow-2xl">
-            <h3 className="text-2xl font-bold mb-4 text-gray-800">Create Task</h3>
-            <form onSubmit={handleCreateTask}>
+            <h3 className="text-2xl font-bold mb-4 text-gray-800">{isEditingTask ? 'Edit Task' : 'Create Task'}</h3>
+            <form onSubmit={handleTaskSubmit}>
               <div className="mb-4">
                 <label className="block text-gray-700 font-medium mb-1">Task Title</label>
                 <input 
@@ -177,7 +217,9 @@ const ProjectDetails = () => {
               </div>
               <div className="flex justify-end space-x-3">
                 <button type="button" onClick={() => setShowTaskModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded transition">Cancel</button>
-                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">Add Task</button>
+                <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+                  {isEditingTask ? 'Save Changes' : 'Add Task'}
+                </button>
               </div>
             </form>
           </div>
